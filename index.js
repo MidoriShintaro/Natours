@@ -1,3 +1,4 @@
+const path = require("path");
 const express = require("express");
 const app = express();
 const moment = require("moment");
@@ -12,8 +13,12 @@ const hpp = require("hpp");
 
 const tourRoute = require("./router/tourRoute");
 const userRoute = require("./router/userRoute");
+const reviewRoute = require("./router/reviewRoute");
 
+app.set("view engine", "pug");
+app.set("views", path.join(__dirname, "views"));
 // 1) GLOBAL MIDDLEWARES
+app.use(express.static(path.join(__dirname, "public")));
 // Set security HTTP headers
 app.use(helmet());
 
@@ -55,8 +60,6 @@ app.use(
   })
 );
 
-app.use(express.static(`${__dirname}/public/`));
-
 app.use((req, res, next) => {
   req.CurrentTime = moment().format("MMMM Do YYYY, h:mm:ss a");
   // console.log(req.headers)
@@ -64,8 +67,16 @@ app.use((req, res, next) => {
 });
 
 // Route
+app.use("/", (req, res) => {
+  res.status(200).render("base", {
+    tour: 'The Forest Hiker',
+    user: 'Raito'
+  });
+});
+
 app.use("/api/v1/tours", tourRoute);
 app.use("/api/v1/users", userRoute);
+app.use("/api/v1/reviews", reviewRoute);
 
 app.all("*", (req, res, next) => {
   next(

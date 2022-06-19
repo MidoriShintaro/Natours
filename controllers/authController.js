@@ -85,7 +85,7 @@ exports.protect = cacthAsync(async (req, res, next) => {
   if (!currentUser) {
     return next(
       new AppError(
-        "The user belonging to this tolen does no longer exists. ",
+        "The user belonging to this token does no longer exists. ",
         401
       )
     );
