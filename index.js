@@ -1,29 +1,43 @@
 const path = require("path");
 const express = require("express");
-const app = express();
-const moment = require("moment");
 const morgan = require("morgan");
-const AppError = require("./utils/appError");
-const ErrorHandle = require("./controllers/errorController");
 const rateLimit = require("express-rate-limit");
 const helmet = require("helmet");
-const xss = require("xss-clean");
 const mongoSanitize = require("express-mongo-sanitize");
+const xss = require("xss-clean");
 const hpp = require("hpp");
+const cookieParser = require("cookie-parser");
 
-const tourRoute = require("./router/tourRoute");
-const userRoute = require("./router/userRoute");
-const reviewRoute = require("./router/reviewRoute");
+const AppError = require("./utils/appError");
+const globalErrorHandler = require("./controllers/errorController");
+const tourRouter = require("./router/tourRoute");
+const userRouter = require("./router/userRoute");
+const reviewRouter = require("./router/reviewRoute");
+const viewRouter = require("./router/viewRoute");
+const bookingRoute = require("./router/bookingRoute");
+
+const app = express();
 
 app.set("view engine", "pug");
 app.set("views", path.join(__dirname, "views"));
+
 // 1) GLOBAL MIDDLEWARES
+// Serving static files
 app.use(express.static(path.join(__dirname, "public")));
+
 // Set security HTTP headers
 app.use(helmet());
+app.use((req, res, next) => {
+  res.setHeader(
+    "Content-Security-Policy",
+    "connect-src 'self https://api.stripe.com",
+    "frame-src  'self' https://js.stripe.com",
+    "script-src 'self' https://js.stripe.com"
+  );
+  next();
+});
 
 // Development logging
-console.log(process.env.NODE_ENV);
 if (process.env.NODE_ENV === "development") {
   app.use(morgan("dev"));
 }
@@ -32,13 +46,14 @@ if (process.env.NODE_ENV === "development") {
 const limiter = rateLimit({
   max: 100,
   windowMs: 60 * 60 * 1000,
-  message:
-    "Too many accounts created from this IP, please try again after an hour",
+  message: "Too many requests from this IP, please try again in an hour!",
 });
 app.use("/api", limiter);
 
 // Body parser, reading data from body into req.body
 app.use(express.json({ limit: "10kb" }));
+app.use(express.urlencoded({ extended: true, limit: "10kb" }));
+app.use(cookieParser());
 
 // Data sanitization against NoSQL query injection
 app.use(mongoSanitize());
@@ -46,44 +61,38 @@ app.use(mongoSanitize());
 // Data sanitization against XSS
 app.use(xss());
 
-// Prevent params pollution
+// Prevent parameter pollution
 app.use(
   hpp({
     whitelist: [
       "duration",
-      "maxGroupSize",
-      "ratingsAverage",
       "ratingsQuantity",
+      "ratingsAverage",
+      "maxGroupSize",
       "difficulty",
       "price",
     ],
   })
 );
 
+// Test middleware
 app.use((req, res, next) => {
-  req.CurrentTime = moment().format("MMMM Do YYYY, h:mm:ss a");
-  // console.log(req.headers)
+  req.requestTime = new Date().toISOString();
+  // console.log(req.cookies);
   next();
 });
 
-// Route
-app.use("/", (req, res) => {
-  res.status(200).render("base", {
-    tour: 'The Forest Hiker',
-    user: 'Raito'
-  });
-});
-
-app.use("/api/v1/tours", tourRoute);
-app.use("/api/v1/users", userRoute);
-app.use("/api/v1/reviews", reviewRoute);
+// 3) ROUTES
+app.use("/", viewRouter);
+app.use("/api/v1/tours", tourRouter);
+app.use("/api/v1/users", userRouter);
+app.use("/api/v1/reviews", reviewRouter);
+app.use("/api/v1/booking", bookingRoute);
 
 app.all("*", (req, res, next) => {
-  next(
-    new AppError(`Can't find the url ${req.originalUrl} in the server`, 404)
-  );
+  next(new AppError(`Can't find ${req.originalUrl} on this server!`, 404));
 });
 
-app.use(ErrorHandle);
+app.use(globalErrorHandler);
 
 module.exports = app;
